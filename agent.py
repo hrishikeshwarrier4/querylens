@@ -42,7 +42,8 @@ chat_openai_model_kwargs = {
 import urllib.parse
 
 password = urllib.parse.quote_plus("gugegush")  # Replace "your#password" with your actual password
-db = SQLDatabase.from_uri(f"mysql://root:{password}@localhost:3306/ecommerce")
+db = SQLDatabase.from_uri(f"mysql+pymysql://root:{password}@localhost:3306/ecommerce")
+
 
 
 #db = SQLDatabase.from_uri("mysql://localhost:3306/ecommerce?user=root")
