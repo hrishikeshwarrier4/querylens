@@ -1,13 +1,22 @@
+from async_timeout import timeout
 from langchain import hub
-from langchain.agents import AgentExecutor, create_openai_functions_agent
+#xfrom langchain.agents import AgentExecutor
+from langchain.agents import initialize_agent, AgentExecutor , create_openai_functions_agent
+
+#from langchain.agents.openai_functions_agent import create_openai_functions_agent
 from langchain.agents import create_sql_agent
 from langchain.agents.agent_types import AgentType
 from langchain.memory import ConversationBufferMemory
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_community.utilities import SQLDatabase
+#from langchain.tools import PythonREPLTool
 from langchain_experimental.tools import PythonREPLTool
-from langchain_openai import ChatOpenAI
+#from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
+
+#import pymysql
+#from langchain_openai import ChatOpenAI
 
 CUSTOM_SUFFIX = """Begin!
 
@@ -16,16 +25,25 @@ Relevant pieces of previous conversation:
 (Note: Only reference this information if it is relevant to the current query.)
 
 Question: {input}
-Thought Process: It is imperative that I do not fabricate information not present in any table or engage in hallucination; maintaining trustworthiness is crucial.
-In SQL queries involving string or TEXT comparisons, I must use the `LOWER()` function for case-insensitive comparisons and the `LIKE` operator for fuzzy matching. 
-Queries for return percentage is defined as total number of returns divided by total number of orders. You can join orders table with users table to know more about each user.
-Make sure that query is related to the SQL database and tables you are working with.
-If the result is empty, the Answer should be "No results found". DO NOT hallucinate an answer if there is no result.
 
-My final response should STRICTLY be the output of SQL query.
+Thought Process: I will follow these steps:
+- Ensure that I do not fabricate information or engage in hallucination; maintaining trustworthiness is crucial.
+- Identify and validate the data relevant to the query.
+- If the current question requires using data from the previous query, identify and reuse that data.
+- Outline a clear, step-by-step plan based on available data.
+- Execute the plan, checking each intermediate step to ensure it aligns with known data and logical inference.
+- Use the `LOWER()` function for case-insensitive comparisons and the `LIKE` operator for fuzzy matching in SQL queries involving string or TEXT comparisons.
+- Return percentage is defined as the total number of returns divided by the total number of orders. I can join the `orders` table with the `users` table to get more detailed user information.
+- Ensure that the query is relevant to the SQL database schema and the available tables.
+- If the result is empty, the response should be "No results found". I must not create or assume data if no result exists.
+
+My final response should be the exact output of the SQL query, or "No results found" if there is no matching data.
 
 {agent_scratchpad}
 """
+
+
+
 
 langchain_chat_kwargs = {
     "temperature": 0,
@@ -38,7 +56,7 @@ chat_openai_model_kwargs = {
     "presence_penalty": -1,
 }
 
-# Code if you've set up passowrd in mysql
+# Code if you've set up password in mysql
 import urllib.parse
 
 password = urllib.parse.quote_plus("gugegush")  # Replace "your#password" with your actual password
@@ -63,6 +81,7 @@ def get_chat_openai(model_name):
     llm = ChatOpenAI(
         model_name=model_name,
         model_kwargs=chat_openai_model_kwargs,
+        timeout=300,
         **langchain_chat_kwargs
     )
     return llm
@@ -118,10 +137,11 @@ def create_agent_for_sql(tool_llm_name: str = "gpt-4-0125-preview", agent_llm_na
     toolkit = get_sql_toolkit(tool_llm_name)
     message_history = SQLChatMessageHistory(
         session_id="my-session",
-        connection_string="mysql://root:{password}@localhost:3306/ecommerce",
+        connection_string=f"mysql+pymysql://root:{password}@localhost:3306/ecommerce",
         table_name="message_store",
         session_id_field_name="session_id"
     )
+
     memory = ConversationBufferMemory(memory_key="chat_history", input_key='input', chat_memory=message_history, return_messages=False)
 
     agent = create_sql_agent(
@@ -129,10 +149,9 @@ def create_agent_for_sql(tool_llm_name: str = "gpt-4-0125-preview", agent_llm_na
         toolkit=toolkit,
         agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         input_variables=["input", "agent_scratchpad", "chat_history"],
-        suffix=CUSTOM_SUFFIX,
+        #suffix=CUSTOM_SUFFIX,
         memory=memory,
-        agent_executor_kwargs={"memory": memory},
-        # handle_parsing_errors=True,
+        agent_executor_kwargs={"memory": memory, "handle_parsing_errors":True},
         # extra_tools=agent_tools,
         verbose=True,
     )
@@ -150,20 +169,38 @@ def create_agent_for_python(agent_llm_name: str = "gpt-4-0125-preview"):
         AgentExecutor: An agent executor configured for Python-related tasks.
 
     """
-    instructions = """You are an agent designed to write a python code to answer questions.
-            You have access to a python REPL, which you can use to execute python code.
-            If you get an error, debug your code and try again.
-            You might know the answer without running any code, but you should still run the code to get the answer.
-            If it does not seem like you can write code to answer the question, just return "I don't know" as the answer.
-            Always output the python code only.
-            Generate the code <code> for plotting the previous data in plotly, in the format requested. 
-            The solution should be given using plotly and only plotly. Do not use matplotlib.
-            Return the code <code> in the following
-            format ```python <code>```
-            """
+    instructions = """You are an agent tasked with writing Python code to answer questions and perform data visualization.
+                You have access to a Python REPL, which you can use to execute Python code.
+                If you encounter an error, debug your code and try again.
+                While you may know the answer without executing code, always run the code to confirm the accuracy of your response.
+                If you cannot write code to answer the question, simply return "I don't know" as the answer.
+                Your code output should be formatted as Python code only.
+
+                When generating code, follow this chain of thought process:
+                1. Understand the Question: Break down the question to identify what data is needed and what kind of plot or analysis is required.
+                2. Plan Your Approach: Outline the necessary steps for data extraction, processing, and visualization. Think about which Plotly plot type (e.g., bar, line, scatter, map) suits the question best.
+                3. Write and Test Code: Implement the Python code and run it in the REPL to ensure it produces the expected output. Debug if necessary.
+                4. Check the Context: Ensure that the generated code aligns with previous data or context from the conversation, if applicable.
+                5. Validate the Visualization: Verify that visualizations, especially maps, are appropriately centered and zoomed to display only relevant data (e.g., specific state, country, or region) without unnecessary global context.
+                6. Output Only the Code: Provide only the code snippet, formatted as follows:
+                ```python
+                <code>
+                ```
+
+                Additional Guidelines:
+                - Use Plotly exclusively for all visualizations. Do not use other libraries like Matplotlib or Seaborn.
+                - For geographical data, ensure that the map's center and zoom are automatically adjusted based on the data's scope for better focus.
+                - Do not fabricate data or assumptions. Base all code on the provided or requested data only.
+                """
+
     tools = [PythonREPLTool()]
     base_prompt = hub.pull("langchain-ai/openai-functions-template")
     prompt = base_prompt.partial(instructions=instructions)
     agent = create_openai_functions_agent(ChatOpenAI(model=agent_llm_name, temperature=0), tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
     return agent_executor
+
+
+
+
+
