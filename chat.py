@@ -52,6 +52,34 @@ if 'agent_memory' not in st.session_state:
     st.session_state['agent_memory_python'] = create_agent_for_python()
 
 
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+
+
+def reset_conversation():
+    st.session_state.messages = []
+    st.session_state['agent_memory_sql'] = create_agent_for_sql()
+    st.session_state['agent_memory_python'] = create_agent_for_python()
+    st.session_state.sql_agent = st.session_state['agent_memory_sql']
+    st.session_state.python_agent = st.session_state['agent_memory_python']
+    st.session_state.messages.append({"role": "system", "content": "Chat has been reset. You can start a new conversation."})
+
+
+
+
+
+
+# Layout improvements
+with st.sidebar:
+    st.header("Instructions for Using the QueryLens")
+    st.write("Welcome to the QueryLens! This platform allows you to interact with data through natural language queries and receive insightful responses or visualizations.")
+    st.write("Example prompts:")
+    st.write("- 'Show the total sales by year.'")
+    st.write("- 'Plot the number of users by country.'")
+    if st.button("Reset Chat"):
+        reset_conversation()
 
 def generate_response(code_type, input_text):
     """
@@ -105,26 +133,14 @@ def generate_response(code_type, input_text):
 
 
 
-
-def reset_conversation():
-    st.session_state.messages = []
-    st.session_state.sql_agent = create_agent_for_sql()
-    st.session_state.python_agent = create_agent_for_python()
-
-
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
 if "agent" not in st.session_state:
     st.session_state.sql_agent = st.session_state['agent_memory_sql']
     st.session_state.python_agent = st.session_state['agent_memory_python']
 
 
-st.title("Query Based Analytics")
+st.title("QueryLens: Query Based Analytics")
 col1, col2 = st.columns([3, 1])
-with col2:
-    st.button("Reset Chat", on_click=reset_conversation)
+
 
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
@@ -161,6 +177,7 @@ if prompt := st.chat_input("Please ask your question:"):
             st.session_state.messages.append(
                 {"role": "error", "content": response})
         else:
+            code = display_python_code_plots(response['output'])
             try:
                 # Check if response is a dictionary and has the 'output' key
                 if isinstance(response, dict) and 'output' in response:
