@@ -18,26 +18,17 @@ from langchain_community.chat_models import ChatOpenAI
 #import pymysql
 #from langchain_openai import ChatOpenAI
 
-CUSTOM_SUFFIX = """Begin!
-
-Relevant pieces of previous conversation:
-{chat_history}
-(Note: Only reference this information if it is relevant to the current query.)
+CUSTOM_SUFFIX = """
+Begin!
 
 Question: {input}
 
-Thought Process: I will follow these steps:
-- Ensure that I do not fabricate information or engage in hallucination; maintaining trustworthiness is crucial.
-- Identify and validate the data relevant to the query.
-- If the current question requires using data from the previous query, identify and reuse that data.
-- Outline a clear, step-by-step plan based on available data.
-- Execute the plan, checking each intermediate step to ensure it aligns with known data and logical inference.
-- Use the `LOWER()` function for case-insensitive comparisons and the `LIKE` operator for fuzzy matching in SQL queries involving string or TEXT comparisons.
-- Return percentage is defined as the total number of returns divided by the total number of orders. I can join the `orders` table with the `users` table to get more detailed user information.
-- Ensure that the query is relevant to the SQL database schema and the available tables.
-- If the result is empty, the response should be "No results found". I must not create or assume data if no result exists.
+Thought Process:
 
-My final response should be the exact output of the SQL query, or "No results found" if there is no matching data.
+Ensure accuracy and avoid fabricating information.
+Identify data relevant to the query or reuse data from previous responses.
+Verify each step to ensure it matches known data.
+Use LOWER() for case-insensitive SQL comparisons and LIKE for partial matches.
 
 {agent_scratchpad}
 """
@@ -81,7 +72,7 @@ def get_chat_openai(model_name):
     llm = ChatOpenAI(
         model_name=model_name,
         model_kwargs=chat_openai_model_kwargs,
-        timeout=300,
+        timeout=1200,
         **langchain_chat_kwargs
     )
     return llm
@@ -149,7 +140,7 @@ def create_agent_for_sql(tool_llm_name: str = "gpt-4-0125-preview", agent_llm_na
         toolkit=toolkit,
         agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         input_variables=["input", "agent_scratchpad", "chat_history"],
-        #suffix=CUSTOM_SUFFIX,
+        suffix=CUSTOM_SUFFIX,
         memory=memory,
         agent_executor_kwargs={"memory": memory, "handle_parsing_errors":True},
         # extra_tools=agent_tools,
