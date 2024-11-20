@@ -88,7 +88,7 @@ QueryLens incorporates mechanisms to manage:
 
 ### Customizability
 
-- **UIImprovements**: Add custom layouts or colors in the Streamlit app.
+- **UI Improvements**: Add custom layouts or colors in the Streamlit app.
 - **Expand Prompts**: Add more system prompts or sample questions for a better user experience.
 
 
